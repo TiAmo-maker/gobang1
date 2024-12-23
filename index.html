@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五子棋游戏</title>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script async src="https://ga.jspm.io/npm:es-module-shims@1.7.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react?dev",
+            "react-dom/client": "https://esm.sh/react-dom/client?dev"
+        }
+    }
+    </script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            padding: 0;
+        }
+
+        .square {
+            background: #fff;
+            border: 1px solid #999;
+            float: left;
+            font-size: 24px;
+            font-weight: bold;
+            line-height: 34px;
+            height: 34px;
+            margin: -1px;
+            padding: 0;
+            text-align: center;
+            width: 34px;
+        }
+
+        .board-row:after {
+            clear: both;
+            content: '';
+            display: table;
+        }
+
+        .status {
+            margin-bottom: 10px;
+        }
+
+        .game {
+            display: flex;
+            flex-direction: row;
+        }
+
+        .game-info {
+            margin-left: 20px;
+        }
+
+        .player-info {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+        import React, { StrictMode, useState } from 'react';
+        import { createRoot } from 'react-dom/client';
+
+        function Square({ value, onSquareClick }) {
+            return (
+                <button className="square" onClick={onSquareClick}>
+                    {value}
+                </button>
+            );
+        }
+
+        function Board({ xIsNext, squares, onPlay }) {
+            const size = 15;
+
+            function handleClick(i) {
+                if (calculateWinner(squares) || squares[i]) {
+                    return;
+                }
+                const nextSquares = squares.slice();
+                nextSquares[i] = xIsNext ? 'X' : 'O';
+                onPlay(nextSquares);
+            }
+
+            const winner = calculateWinner(squares);
+            let status;
+            if (winner) {
+                status = 'Winner: ' + winner;
+            } else {
+                status = 'Next player: ' + (xIsNext ? 'X' : 'O');
+            }
+
+            return (
+                <>
+                    <div className="status">{status}</div>
+                    {[...Array(size)].map((_, row) => (
+                        <div className="board-row" key={row}>
+                            {[...Array(size)].map((_, col) => (
+                                <Square key={col} value={squares[row * size + col]} onSquareClick={() => handleClick(row * size + col)} />
+                            ))}
+                        </div>
+                    ))}
+                </>
+            );
+        }
+
+        let App = function Game() {
+            const size = 15;
+            const [history, setHistory] = useState([Array(size * size).fill(null)]);
+            const [currentMove, setCurrentMove] = useState(0);
+            const [username, setUsername] = useState('');
+            const [score, setScore] = useState(0);
+            const [playerInfo, setPlayerInfo] = useState(null); // 玩家信息
+            const [errorMsg, setErrorMsg] = useState(''); // 错误消息
+            const xIsNext = currentMove % 2 === 0;
+            const currentSquares = history[currentMove];
+
+            function handlePlay(nextSquares) {
+                const nextHistory = [...history.slice(0, currentMove + 1), nextSquares];
+                setHistory(nextHistory);
+                setCurrentMove(nextHistory.length - 1);
+            }
+
+            function jumpTo(nextMove) {
+                setCurrentMove(nextMove);
+            }
+
+            const moves = history.map((squares, move) => {
+                let description;
+                if (move > 0) {
+                    description = 'Go to move #' + move;
+                } else {
+                    description = 'Go to game start';
+                }
+                return (
+                    <li key={move}>
+                        <button onClick={() => jumpTo(move)}>{description}</button>
+                    </li>
+                );
+            });
+
+            const registerPlayer = async () => {
+                const response = await fetch('http://127.0.0.1:5000/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    setErrorMsg(data.error);
+                } else {
+                    setErrorMsg('Player registered successfully!');
+                }
+            };
+
+            const submitScore = async () => {
+                const response = await fetch('http://127.0.0.1:5000/score', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, score })
+                });
+                const data = await response.json();
+                if (data.error) {
+                    setErrorMsg(data.error);
+                } else {
+                    setErrorMsg('Score submitted successfully!');
+                }
+            };
+
+            const getPlayerInfo = async () => {
+                const response = await fetch(`http://127.0.0.1:5000/player/${username}`);
+                const data = await response.json();
+                if (data.error) {
+                    setErrorMsg(data.error);
+                    setPlayerInfo(null);
+                } else {
+                    setErrorMsg('');
+                    setPlayerInfo(data); // 更新玩家信息
+                }
+            };
+
+            return (
+                <div className="game">
+                    <div className="game-board">
+                        <Board xIsNext={xIsNext} squares={currentSquares} onPlay={handlePlay} />
+                    </div>
+                    <div className="game-info">
+                        <ol>{moves}</ol>
+                    </div>
+                    <div>
+                        <input
+                            type="text"
+                            placeholder="用户名"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                        />
+                        <button onClick={registerPlayer}>注册</button>
+                    </div>
+                    <div>
+                        <input
+                            type="number"
+                            placeholder="分数"
+                            value={score}
+                            onChange={(e) => setScore(e.target.value)}
+                        />
+                        <button onClick={submitScore}>提交分数</button>
+                    </div>
+                    <div>
+                        <button onClick={getPlayerInfo}>查看玩家信息</button>
+                    </div>
+                    {errorMsg && <div className="error-message">{errorMsg}</div>}
+                    {playerInfo && (
+                        <div className="player-info">
+                            <h3>玩家信息</h3>
+                            <p>用户名: {playerInfo.username}</p>
+                            <p>得分历史: {playerInfo.scores.length > 0 ? playerInfo.scores.join(', ') : '无得分记录'}</p>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function calculateWinner(squares) {
+            const size = 15;
+            const directions = [
+                { x: 1, y: 0 },  // 水平
+                { x: 0, y: 1 },  // 垂直
+                { x: 1, y: 1 },  // 斜向右下
+                { x: 1, y: -1 }  // 斜向右上
+            ];
+
+            for (let i = 0; i < size; i++) {
+                for (let j = 0; j < size; j++) {
+                    const current = squares[i * size + j];
+                    if (current) {
+                        for (const { x, y } of directions) {
+                            let count = 1;
+                            for (let step = 1; step < 5; step++) {
+                                const ni = i + step * x;
+                                const nj = j + step * y;
+                                if (ni >= 0 && ni < size && nj >= 0 && nj < size && squares[ni * size + nj] === current) {
+                                    count++;
+                                } else {
+                                    break;
+                                }
+                            }
+                            if (count === 5) {
+                                return current;
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(
+            <StrictMode>
+                <App />
+            </StrictMode>
+        );
+    </script>
+</body>
+</html>
